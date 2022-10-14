@@ -1,0 +1,656 @@
+<html>
+  <head>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/2.2.4/jquery.min.js"></script>
+  </head>
+  <body>
+    <div class="topControls">
+    <button id="runner" data-value="start">START</button>
+    <button id="reset" data-value="reset">RESET STOCKS</button>
+    <textarea id="symbols" rows="4" cols="75">CODX,CLEU,AEZS,FAMI,ASTS,GRAY,NEXT,IHT,LEDS,LPTH,MOSY</textarea> <!--value="RHE,QS,AIM,IGC,IMTE,UONE,LPTH,CZNI,SPY,TAWNF,BNGO,AEI,AHT,APRE,CLSN,CMMB,CRTO,LMNL,NNDM,NTAP">-->
+    </div>
+    <div class="buyAmt">
+    <div class="parameter">
+      <span>Dollar Amount per buy</span><input type="text" id="buyDollars" value="100" style="width: 80px;">
+    </div>
+    <div class="parameter">
+      <span>Trailing % stop loss (whole number)</span><input type="text" id="trailing" value=".6" style="width: 40px;">
+    </div>
+    <div class="parameter">
+      <span>Following percent to determine buy points</span><input type="text" id="following" value="3" style="width: 40px;">
+      <button id="setFollowing">SET</button>
+    </div>  
+    <div class="parameter">
+      <span>Auto Buy</span><input type="checkbox" id="autobuy" style="width: 40px;">
+    </div>  
+    <div class="parameter">
+      <span>Record</span><input type="checkbox" id="record" style="width: 40px;">
+    </div>           
+    </div>
+    
+    <div class="messages">
+      <textarea name="message" id="message" rows="8" cols="200"></textarea>
+    </div>
+    <div class="main_table">
+    
+    </div>
+    <div class="todo footer">
+     <span class="counter"></span>
+    </div>
+  </body>
+</html>
+<style>
+
+  html {
+    font-size: 20px;
+  }
+  
+  .flash {
+    background-color: aqua;
+  }
+  
+  #symbols {
+    font-size: 24px;
+  }
+  
+  .name {
+    width: 70%;
+  }
+  
+  .exchange {
+    width: 30%;
+    font-size: 12px;
+  }
+  
+  .volume {
+    font-size: 12px;
+    display: none;
+  }
+
+  .blocko {
+    font-size: 14px;
+  }
+  
+  .blocko div {
+    height: 100%;/*50%;*/
+  }  
+
+  .title {
+    margin-bottom: 50px;
+    font-size: 24px;
+    width: 100%;
+    text-align: center;
+  }
+  
+  .left { float: left; }
+  .right { float: right; }
+  .last .left { float: left; padding-left: 10px; }
+  .last .right { float: right; padding-right: 10px; }  
+
+  .main_table {
+    width:100%;
+    display: grid;
+    grid-template-columns: 34% 33% 33%;
+    font-size: 14px;
+    margin-bottom: 100px;
+  }
+  
+  .main_table div.row {
+    width: 100%;
+    display: grid;
+    grid-template-columns: 10% 12% 8% 8% 8% 8% 8% 8% 10% 10% 5% 13%; 
+    border: 1px solid #dfdfdf; 
+  }
+  
+  .main_table div.row div {
+    padding-left: 5px;
+  }
+  
+  .main_table div.row:nth-child(odd) {
+    border-right: 3px solid black; 
+  }
+  
+  .main_table div.row:nth-child(even) {
+    border-left: 3px solid black; 
+  }
+  
+  .main_table .header {
+    background-color: #80808069;
+  }
+  
+  .main_table div.blocko {
+    border-left: 1px solid #dfdfdf;
+    border-right: 1px solid #dfdfdf;
+    height: 25px;/*50px;*/
+  }
+  
+  .main_table div.blocko div {
+    float: left;
+    width: 100%;
+  }  
+  
+  .topControls,.buyAmt {
+    margin-bottom: 25px;
+    display: flex;
+  }
+  
+  .topControls button {
+    min-width: 200px;
+  }
+  
+  .parameter {
+    border: 1px solid #dfdfdf;
+    margin-right: 20px;
+    font-size: 24px;
+  }
+  
+  .parameter span {
+    margin-right: 10px;
+  }
+  
+  .parameter input {
+    text-align: center;
+    font-size: 24px;
+  }
+  
+  #runner,#reset {
+    font-size: 24px;
+    background: lightblue;
+  }
+  
+  .up {
+    background: green;
+  }
+  
+  .wayup {
+    background: blue;
+  }
+  
+  .down {
+    background: red;
+  }
+  
+  .alert {
+    background: yellow;
+  }
+  
+  .alert_small {
+    background: #ffb6c18a;
+  }
+  
+  .footer {
+    position: fixed;
+    bottom: 0;
+    font-size: 16px;
+  }
+</style>
+<script>
+var container = $('.main_table');
+var container_rows = '.main_table .row';
+var stocks = [];
+var quotes = {};
+var moving_all = {};
+var moving = {};  
+var moving_num_to_watch = 10;
+var average_intervals = [15,30,45,60,75,90];
+var movement_intervals = [];
+var max_interval = 200;
+var running = false;
+var run_every_ms = 500;
+var dop = '<div class="flat">';
+var dopup = '<div class="up">';
+var dopwayup = '<div class="wayup">';
+var dopdown = '<div class="down">';
+var dcl = '</div>';
+var counter = 0;
+var stockCounter = 0;
+var flashesLeft = 0;
+var secondsBetween = 0;
+var lastMs = 0;
+var lastBuy = '';
+var leading = 3;
+var stockz = 'AACG,AAME,AAOI,ABEO,ABIO,ABUS,ACER,ACEV,ACHL,ACHV,ACIU,ACOR,ACQRU,ACTG,ADER,ADES,ADIL,ADMS,ADN,ADTX,ADVM,AEHL,AEHR,AEI,AEMD,AESE,AEY,AGFS,AGLE,AGRX,AGTC,AHPI,AIH,AIHS,AKTX,ALJJ,ALNA,ALPN,ALRN,ALSK,ALT,ALTO,ALTU,ALYA,ALZN,AMPG,AMST,ANEB,ANIX,ANPC,ANY,APDN,APEN,APM,APOP,APRE,APTO,APTX,APWC,AQB,AQMS,AQST,ARAV,ARAY,ARDX,AREC,ARKO,ARLP,ARPO,ARRW,ARTL,ASLN,ASMB,ASPS,ASPU,ASRT,ASTC,ASUR,ASYS,ATAX,ATCX,ATHE,ATNX,ATXI,ATY,AUTL,AUTO,AUUD,AUVI,AVCT,AVDL,AVEO,AVGR,AVRO,AWH,AWRE,AXAS,AXDX,AXLA,AYRO,AYTU,BAOS,BBCP,BBGI,BBIG,BCDA,BCEL,BCLI,BCTX,BDSI,BFRA,BHTG,BIMI,BIOC,BKEP,BKYI,BLCM,BLCT,BLIN,BLPH,BLRX,BLU,BMRA,BNSO,BNTC,BOSC,BOXL,BPTH,BRCN,BRIVU,BRQS,BRY,BSGM,BSQR,BTAQ,BTB,BTBT,BVXV,BWAC,BWEN,BYFC,CAAS,CABA,CAHC,CALA,CAPR,CASA,CASI,CATB,CBAT,CBAY,CBIO,CBLI,CCLP,CCNC,CCRC,CDTX,CDXC,CECE,CEMI,CERC,CETX,CFIV,CFRX,CGEN,CGRN,CHCI,CHEK,CHMA,CHNR,CHPM,CKPT,CLBS,CLEU,CLIR,CLMT,CLPS,CLRB,CLRO,CLSD,CLSN,CLWT,CLXT,CMCT,CMPI,CMRX,CNCE,CNET,CNEY,CNSL,CNSP,COCP,CODX,COGT,COMS,CONX,COOL,CPRX,CPSH,CRDF,CREG,CRESY,CREX,CRIS,CRKN,CRMD,CRNT,CRSA,CRTD,CRVS,CSCW,CTAQ,CTG,CTHR,CTIB,CTIC,CTMX,CTRM,CTSO,CUEN,CWBR,CYAN,CYCC,CYCN,DAIO,DAKT,DARE,DBGI,DBTX,DBVT,DGLY,DLCA,DLPN,DMAC,DOGZ,DRTT,DSAC,DSKE,DTEA,DTOCU,DTSS,DTST,DUNE,DUO,DXYN,DYAI,DYNT,EARS,EAST,ECOR,EDAP,EDSA,EDTK,EFOI,EGLX,EIGR,EKSO,ELDN,ELOX,ELSE,ELTK,ELYS,EM,EMKR,ENG,ENLV,ENOB,ENTX,ENVB,ENVI,EPZM,EQ,EQOS,ETAC,ETON,ETTX,EVAX,EVFM,EVGN,EVK,EVOJ,EVOK,EVOL,EXFO,EYEN,EYES,EYPT,EZGO,EZPW,FBIO,FENC,FINM,FIXX,FKWL,FLDM,FLGC,FLL,FLMN,FLNT,FLXN,FNCB,FNHC,FORD,FORE,FPAY,FRBK,FREQ,FRSX,FSII,FSSI,FSTX,FTEK,FTFT,FUSN,FVE,FWP,GALT,GASS,GBS,GEG,GENE,GGAL,GGMCU,GHSI,GIFI,GIGM,GIIXU,GLBS,GLG,GLMD,GLRE,GLTO,GLYC,GMDA,GMTX,GNCA,GNLN,GNPX,GNRS,GNSS,GOEV,GOSS,GOVX,GPACU,GRAY,GRIL,GRNQ,GROM,GROW,GRTS,GRTX,GRVI,GSAQ,GSIT,GSKY,GSM,GSMG,GTEC,GTIM,GTX,GTYH,GURE,GVP,GWAC,HALL,HAPP,HBIO,HBP,HCAR,HCDI,HDSN,HEC,HEPA,HFFG,HGBL,HGSH,HIII,HIIIU,HITI,HJLI,HLAH,HLIT,HNRG,HOFV,HOOK,HOTH,HROW,HSTO,HTBX,HTGM,HUDI,HUGE,HUIZ,HUSN,HX,HYMC,HYW,ICON,IDN,IDRA,IFBD,IFMK,IFRX,IGAC,IGIC,III,IKT,IMAC,IMBI,IMCC,IMMP,IMMR,IMRA,IMTE,IMV,INFI,INM,INOD,INVO,IPA,IPDN,IPW,IRIX,ISEE,ISIG,ISNS,ITI,IVAC,IZEA,JAN,JCIC,JFIN,JFU,JG,JNCE,JUPW,JVA,JWEL,JZXN,KALA,KBNT,KBSF,KERN,KIIIU,KIN,KINZ,KLDO,KLXE,KMDA,KNDI,KOPN,KRKR,KRMD,KRNL,KTRA,KXIN,KZIA,KZR,LCA,LEXX,LFTR,LFVN,LGACU,LGHL,LGVN,LHDX,LIFE,LINC,LIQT,LIVX,LIXT,LIZI,LJPC,LMB,LMFA,LMNL,LNSR,LOGC,LOTZ,LPCN,LPTH,LPTX,LQDA,LRMR,LSEA,LTBR,LTRPA,LTRX,LYL,LYRA,LYTS,MAAC,MACQU,MAGS,MARK,MBII,MBIO,MBOT,MBRX,MCBC,MCHX,MDCA,MDIA,MDJH,MDNA,MDRR,MDWD,MEDS,MESA,METC,MFH,MFIN,MGTA,MHLD,MICT,MIND,MIST,MITC,MITO,MKGI,MKTY,MLAC,MMLP,MNDO,MNOV,MNPR,MNTK,MOGO,MOHO,MOSY,MOTS,MOVE,MRAM,MREO,MRKR,MRM,MTBC,MTC,MTCR,MTEM,MTP,MTSL,MYMD,MYSZ,NAAC,NBRV,NBSE,NCMI,NCNA,NDRA,NERV,NEWA,NEXT,NGAC,NH,NLSP,NLTX,NNBR,NOAC,NRBO,NSPR,NTEC,NTWK,NURO,NUWE,NUZE,NVFY,NVOS,NXTC,NYMX,OBLG,OBSV,OCG,OCUP,OCX,ODT,OEG,OESX,OHPAU,OIIM,OLB,ONCS,ONCT,ONCY,ONDS,ONVO,OPGN,OPHC,OPT,OPTN,ORGS,ORPH,ORTX,OSAT,OSMT,OSS,OSW,OTIC,OTLK,OVID,OXBR,OXSQ,PAE,PALI,PANL,PAQC,PAVM,PAYS,PBLA,PBPB,PBTS,PBYI,PCSA,PCTI,PCYG,PETZ,PFIE,PFIN,PFMT,PFSW,PHAS,PHIO,PHUN,PIRS,PIXY,PLIN,PMBC,POAI,POLA,POWW,PPBT,PPGH,PPSI,PPTA,PROG,PRPH,PRPO,PRQR,PRSR,PRTK,PRVB,PSHG,PSTI,PSTV,PT,PTE,PTIX,PTPI,PUCK,PULM,PWFL,PXLW,PYR,QELL,QH,QIPT,QK,QLGN,QLI,QMCO,QRHC,QTNT,QUIK,QUMU,RAIL,RAVE,RCAT,RCMT,RCON,RDHL,RDI,REDU,REED,REFR,RELI,RELL,REPH,RESN,RETO,RFIL,RIBT,RKDA,RMGB,RMNI,RNWK,ROCC,RPHM,RSLS,RSSS,RTPY,RVPH,RVSB,RWLK,SAII,SALM,SANW,SBBP,SBT,SCKT,SCLEU,SCOA,SCOR,SCPH,SCPS,SCYX,SDH,SEAC,SECO,SEED,SEEL,SELB,SELF,SFET,SFT,SGAM,SGBX,SGLB,SGOC,SGRP,SIC,SIEB,SIEN,SIGA,SINO,SINT,SIOX,SJ,SLCR,SLDB,SLGG,SLHG,SLNO,SLRX,SMMT,SMSI,SNCR,SND,SNES,SNFCA,SNGX,SNOA,SNPX,SNRH,SNSE,SOHO,SOLO,SONN,SPCB,SPI,SPOK,SPRT,SQBG,SQFT,SRAX,SREV,SRGA,SRTS,SSKN,STCN,STRM,STRR,STSA,STWO,SURF,SVFA,SVFB,SVFC,SVOK,SVRA,SWET,SXTC,SY,SYBX,SYPR,SYRS,TAIT,TALK,TANH,TAOP,TARA,TAST,TBCPU,TCDA,TCON,TEDU,TEKK,TENX,TETCU,TFFP,TGA,TH,THMO,THTX,TIPT,TIRX,TLC,TLMD,TLSA,TOMZ,TOPS,TOUR,TRIB,TRIL,TRIT,TRKA,TRMT,TRUE,TRVG,TRVI,TTNP,TUEM,TUSK,TWLVU,TYHT,UBFO,UBX,UEPS,UGRO,UIHC,UK,ULBI,UONEK,UROY,USEG,USIO,USWS,UTSI,VBLT,VCNX,VCVC,VELOU,VERB,VERO,VERU,VERY,VIEW,VII,VINO,VIOT,VIRI,VISL,VIVE,VKTX,VLON,VMAR,VMD,VRME,VRNA,VRPX,VS,VSTA,VTSI,VTVT,VVOS,VVPR,VYGR,VYNE,VYNT,WAFU,WATT,WHLM,WHLR,WIMI,WINT,WISA,WKEY,WNEB,WORX,WRAP,WTER,WVE,XAIR,XBIO,XCUR,XELA,XELB,XERS,XFOR,XNET,YELL,YGMZ,YI,YJ,YQ,YTEN,YTRA,YVR,ZCMD,ZIVO,ZIXI,ZKIN,ZVO,ZYNE';
+
+var movement = 1.5; //move up to get up swing
+var movement_small = 2.2;
+var movement2 = 4; 
+var looseMovement = 1;
+
+var url = "https://api.tdameritrade.com/v1/marketdata/quotes?symbol=";
+
+var url_array = [];
+
+var url_array_length = 0;
+
+var url_array_index = 0;
+
+var urlForAuth = "https://api.tdameritrade.com/v1/oauth2/token";
+
+var flashing = false;
+
+var resetKey = "";
+
+var clientId = "";
+
+var accountId = "";
+
+var auth = "";
+
+function createTable() {
+  $(container).html('');
+  addRow('',true);
+  var url_array_index = -1;
+
+  for (var i = 0; i < stocks.length; i++) {
+    if (i%100 == 0) {
+      url_array.push(url);
+      url_array_index++;
+    }
+    var stock = stocks[i].toUpperCase();
+    if (i%100 > 0)
+      url_array[url_array_index] += '%2C';
+    url_array[url_array_index] += stock;
+    addRow(stock);
+    quotes[stock] = [];
+    moving[stock] = [];
+    moving_all[stock] = {};
+  }
+  
+  url_array_length = url_array.length;
+  
+  $('.buy').click(function(){
+    var symb = $(this).data('value');
+    var amt =  $('#buyDollars').val().toString();
+    var curr = $('.last.'+symb.toUpperCase()).text();
+    buy(symb,amt,curr);
+  });  
+  
+  $('.sell').click(function(){
+    var symb = $(this).data('value');
+    var amt =  $('#buyDollars').val().toString();
+    sell(symb,amt);
+  });   
+}
+
+function buy(symb,amount,curr) {
+    var currentPrice = parseFloat(curr);
+    var leadAmt = (curr * (1.0 + (leading/100))).toFixed(2);
+    var trailPercent =  parseFloat($('#trailing').val());
+    if (isNaN(currentPrice)) {
+      alert('current price is nan');
+      return;
+    }
+    trailAmount = (trailPercent * currentPrice)/100;
+    trailAmount = Math.round(trailAmount * 100) / 100;
+    var shares = Math.floor(amount/currentPrice);
+    console.log(symb + ' buy ' + shares + ' at ' + curr);
+    var newMessage = 'MANUAL BUY:  ' + currentPrice.toString() + ' ' + shares.toString() + ' shares for ' + symb + '---check orders on TDA';
+    $('#message').val(newMessage + '\n' + $('#message').val()); 
+    buyWithTrailingStop(symb,shares,trailAmount,leadAmt);
+}
+
+function sell(symb,amount) {
+    alert(symb + ' sell ' + amount);
+}
+
+
+function init_stockPanel(use_gui_stocks = false) { //also resets
+  var stks = [];
+  if (use_gui_stocks)
+    stks = $.unique($('#symbols').val().toUpperCase().split(',').sort());
+  else
+    stks = $.unique(stockz.toUpperCase().split(',').sort());
+    
+  $('#symbols').val(stks.join(','));
+  
+  stocks = [];
+  for (var i = 0; i < stks.length; i++)
+    stocks.push(stks[i].trim());
+    
+  stockCounter = stocks.length;
+    
+  counter = 0;
+  createTable();
+  //init_Sim();
+}
+
+init_stockPanel();
+
+function addRow(symb, isHeader = false) {
+  $(container).append('<div class="row"></div>');
+  var last_row = $(container_rows).last();
+  
+  if (isHeader) { //this is really a init function for the whole page
+    $(last_row).last().append('<div class="header">Symbol</div>').append('<div class="header"><span class="left">Last</span><span class="right">Vol</span></div>');
+    movement_intervals = [];
+    var interval_length = average_intervals.length;
+    for (var i = 0; i < average_intervals.length; i++) {
+        movement_intervals[i] = movement * (average_intervals[i] / average_intervals[interval_length-1]);
+        $(last_row).append('<div class="header">' + average_intervals[i].toString() + 's</div>');
+    }
+    movement_intervals.reverse();
+    $(last_row).append('<div class="header">Buy</div>');
+    $(last_row).append('<div class="header">Sell</div>');
+    $(last_row).append('<div class="header">Symbol</div>');
+    $(container).append($(last_row).last().clone());
+    $(container).append($(last_row).last().clone());
+    return;
+  }
+  
+  $(last_row).addClass(symb);
+  $(last_row).append('<div class="symb ' + symb + '"><span class="name">'+ symb.toUpperCase() +'</span><span class="exchange ' + symb + '"></span></div>').append('<div class="last "><span class="last left ' + symb + '"></span><span class="right volume '+ symb.toUpperCase() +'"></span></div>');
+  for (var i = 0; i < average_intervals.length; i++) {
+      $(last_row).append('<div class="' + symb + ' ' + average_intervals[i].toString() + ' blocko"></div>');
+  }
+  $(last_row).append('<button class="buy" data-value="'+symb+'">BUY</button>');
+  $(last_row).append('<button class="sell" data-value="'+symb+'">SELL</button>');
+  $(last_row).append('<div class="symb ' + symb + '"><span class="name">'+ symb.toUpperCase() +'</span><span class="exchange ' + symb + '"></span></div>');
+}
+
+function trimArrays(emptyV = false) {
+  for (const [key, value] of Object.entries(quotes)) {
+    if (!emptyV && value.length < max_interval)
+      return;  //dont expand array when its smaller than the max, gives terrible results with NAN everywhere obviously durp
+    value.length = (emptyV)?0:max_interval;
+  }  
+  for (const [key, value] of Object.entries(moving)) {
+    value.length = (emptyV)?0:25;
+  }
+}
+
+
+function dataToCSV(data) {
+  var out = '';
+  out = ConvertToCSV({time:Date.now()});
+  for (const [key, value] of Object.entries(data)) {  //iterate through stocks
+    var quote = {};
+    thisKey = key.toUpperCase(); 
+    if (value.lastPrice == 0)
+      continue;
+    quote.symbol = thisKey;
+    quote.lastPrice = value.lastPrice;
+    quote.lastSize = value.lastSize;
+    quote.bidPrice = Math.round((value.bidPrice-value.lastPrice)*100);
+    quote.askPrice = Math.round((value.askPrice-value.lastPrice)*100);
+    var csv = ConvertToCSV(quote);
+    out += csv;
+  }
+  
+  return out;
+}
+
+function ConvertToCSV(data) {
+    var line = '';
+
+    for (const [key, value] of Object.entries(data)) {
+            if (line != '') line += ','
+
+            line += value;
+    }
+    line += '\r\n';
+    return line;
+}
+
+function processData(data) {
+  var url_endpoint = 'http://localhost:5000/quotes';
+  if ($('#record').prop('checked')) {
+    $.ajax({
+        url: url_endpoint,//urlForAuth,
+        type: 'POST',
+        header: {
+          "Content-Type" : "application/x-www-form-urlencoded; charset=UTF-8"
+        },
+        data: {
+                "quotes": dataToCSV(data)
+              },
+        dataType: 'json',
+        success: function(data) {
+
+        },
+        error: function(e,e2,e3) { console.log(e);console.log(e2);console.log(e3);  }
+      });
+  }
+    
+  var nowMs = Date.now();
+  if (lastMs > 0)
+    secondsBetween = ((nowMs - lastMs)/1000) * url_array_length;
+  lastMs = nowMs;
+  if (secondsBetween == 0)
+    return;
+  
+  var fullTicks = average_intervals[0]/secondsBetween;
+  var ticksPerMinute = Math.round(fullTicks); //Math.floor
+  
+  if (counter%20 == 0)
+    trimArrays();
+    
+  $('span.counter').text(counter.toString() + ' ' + stockCounter.toString());
+  
+  for (const [key, value] of Object.entries(data)) {  //iterate through stocks
+    thisKey = key.toUpperCase(); 
+    if (value.lastPrice == 0)
+      continue;
+    
+    $('.main_table div.row.' + thisKey).html();  //this might be slow so keep in mind
+    $('.main_table div.row.' + thisKey).removeClass('up').removeClass('down');
+    $('.symb.' + thisKey).parent().removeClass('alert');
+    $('.symb.' + thisKey).parent().removeClass('alert_small');
+    
+    var ele = '.last.' + thisKey;
+    $(ele).html(value.lastPrice.toString());
+    //$('.volume.' + thisKey).text(value.lastSize);
+    quotes[thisKey].unshift(value.lastPrice);
+    var do_buy = true;
+    var do_buy_small = true;
+    var velocity = 0; //for now just counter of ups and downs across intervals
+    
+    //process this stocks color indicators
+    for (var i = 0; i < average_intervals.length; i++) {  //iterate through this stocks intervals      
+      if (counter < 20) {
+        $('.exchange.'+thisKey).text(value.exchangeName);
+      }
+      
+      var thisInterval = average_intervals[i];
+      
+      if (quotes[thisKey].length < ( (i+1) * ticksPerMinute ) ) { //if not enough data then dont process
+        do_buy = false;
+        do_buy_small = false;
+        break;
+      }
+      
+      var avg = 0,max = 0, min = 99999;
+      
+      for (var j = (i * ticksPerMinute); j < ((i+1) * ticksPerMinute); j++) {  //emulating candlesticks in this version
+        var thisPrice = quotes[thisKey][j];
+        max = (thisPrice > max) ? thisPrice : max;
+        min = (thisPrice < min) ? thisPrice : min;
+        avg += thisPrice;
+      }
+      
+      avg = avg / ticksPerMinute;
+      
+      moving_all[thisKey][thisInterval] = avg;
+        
+      var ele = '.' + thisInterval.toString() + '.' + thisKey;
+      
+      $(ele).html(dop + avg.toFixed(2) + dcl);
+    }
+    
+    for (var i = average_intervals.length-1; i >= 0 ; i--) {  //iterate through this stocks minutes just set above 
+      if (!moving_all[thisKey][average_intervals[i]]) {
+        do_buy = false;
+        do_buy_small = false;
+        break;
+      }
+      if (i == average_intervals.length-1)  //nothing to test in first minute (of 60,120,180....180 is the first minute)
+        continue;
+        
+      var linear_percentUpOverPrevious = movement;//movement_intervals[i];
+      var thisPriceFloor = moving_all[thisKey][average_intervals[i+1]] * (100.0 + linear_percentUpOverPrevious)/100.0;
+      
+      if (moving_all[thisKey][average_intervals[i]] < thisPriceFloor)
+        do_buy = false;
+    }     
+    if (do_buy) {
+      if ($('#autobuy').prop('checked')) {
+        var symb = thisKey.toUpperCase();
+        var amt =  $('#buyDollars').val().toString();
+        var curr = $('.last.'+symb).text();
+        if (lastBuy != symb) {
+          lastBuy = symb;
+          buy(symb,amt,curr);
+        } }
+        
+        var newMessage = 'Detected:  ' + thisKey + ' ' + $('.last.'+thisKey).text();
+        $('#message').val(newMessage + '\n' + $('#message').val()); 
+        $('.symb.' + thisKey).parent().addClass('alert');
+        kickoffFlashing();
+    }
+      
+  }
+  var nowMs = Date.now();
+  if (lastMs > 0)
+     console.log(nowMs - lastMs);
+  /*if (isRunning_Sim)
+    process_Sim();*/
+}
+
+function kickoffFlashing() {
+  flashesLeft += 20;
+  if (flashing)
+    return;
+  goFlash();
+}
+
+function goFlash() {
+  flashesLeft--;
+  if (flashesLeft <= 0) {
+    flashing = false;
+    $('html').removeClass('flash');
+    return;
+  }
+  
+  flashing = true;
+  $('html').toggleClass('flash');
+  setTimeout(function(){goFlash()},200);
+}
+
+function requestPrices() {
+  var index = 0;
+  if (url_array_length > 1)
+    index = url_array_index%url_array_length;
+    
+  url_array_index++;
+  var thisUrl = url_array[index];
+  $.ajax({
+      url: thisUrl,
+      type: 'GET',
+      headers: {"Authorization": auth},
+      dataType: 'json',
+      success: function(data) {
+        if (running == false)
+          return;
+        setTimeout(function(){requestPrices();},run_every_ms);
+        counter++;
+        processData(data);
+      },
+      error: function() { getAuthKey(); }
+    });
+}
+
+$('#runner').click(function(){
+  if ($(this).data('value') == 'start') {
+    trimArrays(true);
+    $(this).data('value','stop');
+    $(this).text('STOP');
+    running = true;
+    requestPrices();
+  }
+  else {
+    $(this).data('value','start');
+    $(this).text('START');
+    running = false;
+  }
+});
+
+$('#reset').click(function(){
+  init_stockPanel(true);
+});
+
+$('#setFollowing').click(function(){
+  var following =  $('#following').val().toString();
+  movement = following;
+  movement2 = following;
+  
+  init_stockPanel();
+});
+
+function getAuthKey() {
+  var url_endpoint = 'https://api.tdameritrade.com/v1/oauth2/token';
+  if (!clientId) {
+    alert('Please set the credentials.')
+    return;
+  }
+  $.ajax({
+      url: url_endpoint,//urlForAuth,
+      type: 'POST',
+      header: {
+        "Content-Type" : "application/x-www-form-urlencoded; charset=UTF-8"
+      },
+      data: {
+              "refresh_token": resetKey,
+              "client_id":clientId+"@AMER.OAUTHAP",
+              "grant_type":"refresh_token"
+            },
+      dataType: 'json',
+      success: function(data) {
+        auth = 'Bearer ' + data.access_token;
+        console.log('authorized:');
+        console.log(auth);
+        if ($('#runner').data('value') == 'start')
+          $('#runner').click();
+        else
+          requestPrices();
+      },
+      error: function(e,e2,e3) { console.log(e);console.log(e2);console.log(e3);  }
+    });
+}
+
+getAuthKey();
+
+function buyWithTrailingStop(symb,shares,trailAmount,leadAmount) {
+    var url_endpoint = 'https://api.tdameritrade.com/v1/accounts/' + accountId +'/orders';
+    var send = {
+      "orderType": "LIMIT",
+      "price":leadAmount,
+      "session": "SEAMLESS",//"NORMAL",
+      "duration": "GOOD_TILL_CANCEL",//"FILL_OR_KILL",
+      //"orderStrategyType": "TRIGGER",
+      "orderStrategyType": "SINGLE",
+      "orderLegCollection": [
+        {
+          "instruction": "BUY",
+          "quantity": shares,
+          "instrument": {
+            "symbol": symb,
+            "assetType": "EQUITY"
+          }
+        }
+      ]
+    }
+    
+    console.log(send);
+    
+    $.ajax({
+        url: url_endpoint,
+        type: 'POST',
+        headers: { "Authorization": auth,
+          "Content-Type" : "application/json; charset=utf-8" },
+        data: JSON.stringify(send),
+        dataType: 'json',
+        success: function(data) {
+          console.log(data);
+        },
+        error: function(e,e2,e3) { console.log(e);console.log(e2);console.log(e3);  }
+      });
+}
+</script>
